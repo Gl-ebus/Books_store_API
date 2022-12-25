@@ -79,3 +79,14 @@ class BooksApiTestCase(APITestCase):
 		self.assertEqual(status.HTTP_200_OK, resp.status_code)
 		self.b1.refresh_from_db() # Обновляет объект данными из БД
 		self.assertEqual(1500, self.b1.price)
+
+	def test_delete(self):
+		self.client.force_login(self.user)
+
+		delete_id = self.b4.id
+		url = reverse('book-detail', args=(delete_id, ))
+		resp = self.client.delete(url, content_type='application/json')
+		self.assertEqual(status.HTTP_204_NO_CONTENT, resp.status_code)
+		self.assertEqual(3, Book.objects.count())
+		resp_check_del = self.client.get(url)
+		self.assertEqual(status.HTTP_404_NOT_FOUND, resp_check_del.status_code)
