@@ -16,13 +16,13 @@ class BooksApiTestCase(APITestCase):
 		self.url = reverse('book-list')
 
 		self.b1 = Book.objects.create(name='TestBook1', price=25.00,
-		                         author='Author 1')
+		                         author='Author 1', owner=self.user)
 		self.b2 = Book.objects.create(name='TestBook2', price=19.00,
-		                         author='Author 2')
+		                         author='Author 2', owner=self.user)
 		self.b3 = Book.objects.create(name='TestBook 3', price=30.00,
-		                         author='Author 1')
+		                         author='Author 1', owner=self.user)
 		self.b4 = Book.objects.create(name='TestBook 4', price=22.00,
-		                         author='Author 4')
+		                         author='Author 4', owner=self.user)
 
 
 	def test_get(self):
@@ -49,7 +49,7 @@ class BooksApiTestCase(APITestCase):
 		self.assertEqual(status.HTTP_200_OK, resp.status_code)
 		self.assertEqual(serializer_data, resp.data)
 
-	def test_post(self):
+	def test_create(self):
 		self.client.force_login(self.user) # авторизиация пользователя
 		data = {
 			"name": "Programming in Python 3",
@@ -62,6 +62,7 @@ class BooksApiTestCase(APITestCase):
 
 		self.assertEqual(status.HTTP_201_CREATED, resp.status_code)
 		self.assertEqual(5, Book.objects.count())
+		self.assertEqual(self.user, Book.objects.last().owner)
 
 	def test_update(self):
 		self.client.force_login(self.user)  # авторизиация пользователя
@@ -71,6 +72,44 @@ class BooksApiTestCase(APITestCase):
 			"name": self.b1.name,
 			"price": 1500,
 			"author": self.b1.author
+		}
+		json_data = json.dumps(data)
+		resp = self.client.put(url, data=json_data,
+		                        content_type='application/json')
+
+		self.assertEqual(status.HTTP_200_OK, resp.status_code)
+		self.b1.refresh_from_db() # Обновляет объект данными из БД
+		self.assertEqual(1500, self.b1.price)
+
+	def test_update_not_owner(self):
+		user = User.objects.create(username='test_user_2')
+		self.client.force_login(user)  # авторизиация пользователя
+
+		url = reverse('book-detail', args=(self.b1.id, ))
+		data = {
+			"name": self.b1.name,
+			"price": 1500,
+			"author": self.b1.author,
+			"owner": user.id
+		}
+		json_data = json.dumps(data)
+		resp = self.client.put(url, data=json_data,
+		                        content_type='application/json')
+
+		self.assertEqual(status.HTTP_403_FORBIDDEN, resp.status_code)
+		self.b1.refresh_from_db() # Обновляет объект данными из БД
+		self.assertEqual(25, self.b1.price)
+
+	def test_update_not_owner_but_staff(self):
+		user = User.objects.create(username='test_user_2', is_staff=True)
+		self.client.force_login(user)  # авторизиация пользователя
+
+		url = reverse('book-detail', args=(self.b1.id, ))
+		data = {
+			"name": self.b1.name,
+			"price": 1500,
+			"author": self.b1.author,
+			"owner": user.id
 		}
 		json_data = json.dumps(data)
 		resp = self.client.put(url, data=json_data,
@@ -90,3 +129,14 @@ class BooksApiTestCase(APITestCase):
 		self.assertEqual(3, Book.objects.count())
 		resp_check_del = self.client.get(url)
 		self.assertEqual(status.HTTP_404_NOT_FOUND, resp_check_del.status_code)
+
+	def test_delete_not_owner(self):
+		user = User.objects.create(username='test_user_2')
+		self.client.force_login(user)  # авторизиация пользователя
+
+		delete_id = self.b4.id
+		url = reverse('book-detail', args=(delete_id, ))
+		resp = self.client.delete(url, content_type='application/json')
+		self.assertEqual(status.HTTP_403_FORBIDDEN, resp.status_code)
+		self.assertEqual(4, Book.objects.count())
+
