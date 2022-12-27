@@ -4,7 +4,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework.utils import json
 
-from store.models import Book
+from store.models import Book, UserBookRelation
 from store.serializers import BooksSerializer
 
 
@@ -140,3 +140,61 @@ class BooksApiTestCase(APITestCase):
 		self.assertEqual(status.HTTP_403_FORBIDDEN, resp.status_code)
 		self.assertEqual(4, Book.objects.count())
 
+
+class BooksRalationTestCase(APITestCase):
+	def setUp(self) -> None:
+		# тестовые пользователи для проверки изменения данных в БД
+		self.user = User.objects.create(username='test_user')
+		self.client.force_login(self.user)
+		self.user2 = User.objects.create(username='test_user_2')
+
+		self.b1 = Book.objects.create(name='TestBook1', price=25.00,
+		                         author='Author 1', owner=self.user)
+		self.b2 = Book.objects.create(name='TestBook2', price=19.00,
+		                         author='Author 2', owner=self.user)
+		self.url = reverse('userbookrelation-detail', args=(self.b1.id,))
+
+	def test_like_bookmarks(self):
+		json_data = json.dumps( {"like": True} )  # Преобразует словарь в объект JSON
+		resp = self.client.patch(self.url, data=json_data,
+		                        content_type='application/json')
+
+		self.assertEqual(status.HTTP_200_OK, resp.status_code)
+		self.b1.refresh_from_db() # Обновляет объект данными из БД
+		relation = UserBookRelation.objects.get(user=self.user,
+		                                        book=self.b1)
+		self.assertTrue(relation.like)
+
+		# test 'in_bookmarks'
+		json_data = json.dumps( {"in_bookmarks": True} )
+		resp = self.client.patch(self.url, data=json_data,
+		                         content_type='application/json')
+		self.assertEqual(status.HTTP_200_OK, resp.status_code)
+		self.b1.refresh_from_db()  # Обновляет объект данными из БД
+		relation = UserBookRelation.objects.get(user=self.user,
+		                                        book=self.b1)
+		self.assertTrue(relation.in_bookmarks)
+
+	def test_rate(self):
+		json_data = json.dumps( {"rate": 5} )
+
+		resp = self.client.patch(self.url, data=json_data,
+		                        content_type='application/json')
+
+		self.assertEqual(status.HTTP_200_OK, resp.status_code)
+		self.b1.refresh_from_db() # Обновляет объект данными из БД
+		relation = UserBookRelation.objects.get(user=self.user,
+		                                        book=self.b1)
+		self.assertEqual(5, relation.rate)
+
+	def test_rate_wrong(self):
+		json_data = json.dumps( {"rate": 0 } )
+
+		resp = self.client.patch(self.url, data=json_data,
+		                        content_type='application/json')
+
+		self.assertEqual(status.HTTP_400_BAD_REQUEST, resp.status_code, resp.data)
+		self.b1.refresh_from_db() # Обновляет объект данными из БД
+		relation = UserBookRelation.objects.get(user=self.user,
+		                                        book=self.b1)
+		self.assertEqual(None, relation.rate, resp.data)
