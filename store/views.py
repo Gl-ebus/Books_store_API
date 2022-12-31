@@ -1,3 +1,4 @@
+from django.db.models import Count, Case, When, Avg
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.mixins import UpdateModelMixin
 from rest_framework.permissions import IsAuthenticated
@@ -14,13 +15,17 @@ from store.serializers import BooksSerializer, UserBookRelationSerializer
 
 
 class BookViewSet(ModelViewSet):
-	queryset = Book.objects.all()
+	queryset = Book.objects.annotate(
+			likes_count=Count(Case(When(userbookrelation__like=True, then=1))),
+			rating=Avg('userbookrelation__rate')
+		).select_related('owner').prefetch_related('readers')
+
 	serializer_class = BooksSerializer
 	filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
 	permission_classes = [IsOwnerOrStaffOrReadOnly]
 	filterset_fields = ['price']
 	search_fields = ['name', 'author']
-	ordering_fields = ['price', 'author']
+	ordering_fields = ['price', 'author', 'rating']
 
 	def perform_create(self, serializer):
 		serializer.validated_data['owner'] = self.request.user
