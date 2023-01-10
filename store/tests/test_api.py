@@ -1,6 +1,8 @@
 from django.contrib.auth.models import User
+from django.db import connection
 from django.db.models import Count, Case, When, Avg
 from django.urls import reverse
+from django.test.utils import CaptureQueriesContext
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework.utils import json
@@ -29,7 +31,10 @@ class BooksApiTestCase(APITestCase):
 		                                like=True, rate=5)
 
 	def test_get(self):
-		resp = self.client.get(self.url)
+		with CaptureQueriesContext(connection) as queries: # Контекстный менеджер,
+			resp = self.client.get(self.url)               # который фиксирует запросы указанного соединения.
+			self.assertEqual(2, len(queries))
+
 		books = Book.objects.annotate(
 			likes_count=Count(Case(When(userbookrelation__like=True, then=1))),
 			rating=Avg('userbookrelation__rate')
